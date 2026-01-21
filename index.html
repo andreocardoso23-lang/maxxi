@@ -2977,7 +2977,8 @@
 
     function getChartTransactions() {
       const { start, end } = getChartRange();
-      return (allTransactions || []).filter((t) => {
+      const filtered = filterTransactionsUntilToday(allTransactions || []);
+      return filtered.filter((t) => {
         const date = parseDateInput(t.date);
         if (Number.isNaN(date.getTime())) return false;
         return date >= start && date <= end;
@@ -3014,6 +3015,45 @@
       const hasGroup = accountGroups.some((group) => group.id === fallback);
       state.overviewFilters.accountGroup = hasGroup ? fallback : "all";
       select.value = state.overviewFilters.accountGroup;
+    }
+
+    function aggregateChartTotalsByMonth(transactions, labels) {
+      const receitaParametros = new Set([
+        "PIX / Dinheiro / Transferencias",
+        "Cartao de Credito e Debito",
+        "Aportes e Outras Receitas"
+      ]);
+      const despesaParametros = new Set([
+        "Despesa Fixa",
+        "Despesas Diversas",
+        "Impostos",
+        "Investimento",
+        "Custo com Marketing",
+        "Custo de Equipe",
+        "Custo de Insumos",
+        "Retiradas"
+      ]);
+      const labelSet = new Set(labels);
+      const byMonth = {};
+      transactions.forEach((t) => {
+        if (!t) return;
+        const date = parseDateInput(t.date);
+        if (Number.isNaN(date.getTime())) return;
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        if (!labelSet.has(key)) return;
+        const parametro = (t.parametro || resolveParametro(t.category) || "").trim();
+        const amount = Number(t.amount) || 0;
+        if (!byMonth[key]) byMonth[key] = { receita: 0, despesa: 0 };
+        if (t.type === "receita" && receitaParametros.has(parametro)) {
+          byMonth[key].receita += amount;
+        } else if (t.type === "despesa" && despesaParametros.has(parametro)) {
+          byMonth[key].despesa += amount;
+        }
+      });
+      return {
+        revenue: labels.map((label) => byMonth[label]?.receita ?? 0),
+        expense: labels.map((label) => byMonth[label]?.despesa ?? 0)
+      };
     }
 
     function resolveSelectedAccountGroup() {
@@ -3138,7 +3178,7 @@
         if (!container) return;
         const aggregate = resolveDashboardAggregate(data);
         const totalReceitas = getTotalByType(aggregate, "receita");
-        const totalDespesas = getTotalByType(aggregate, "despesa");
+        const totalDespesas = sumDespesasPorParametro(aggregate);
         const revenueIds = new Set(["pixDinheiroTransferencias", "cartoes", "aportes"]);
         const expenseIds = new Set([
           "despesaFixa",
@@ -3832,13 +3872,10 @@
       if (!canvas) return;
       const ctxCash = canvas.getContext("2d");
       const { start, end } = getChartRange();
-      const aggregate = aggregateTransactions(getChartTransactions());
-      const monthly = aggregateMonthlyFromAggregate(aggregate);
       const vendasByMonth = aggregateChartVendasByMonth(start, end);
       const labels = getChartMonthLabels(start, end);
-      const monthlyMap = new Map(monthly.map((m) => [m.label, m]));
-      const revenue = labels.map((label) => monthlyMap.get(label)?.receita ?? 0);
-      const expense = labels.map((label) => monthlyMap.get(label)?.despesa ?? 0);
+      const chartTransactions = getChartTransactions();
+      const { revenue, expense } = aggregateChartTotalsByMonth(chartTransactions, labels);
       const sales = labels.map((label) => vendasByMonth[label] ?? 0);
 
       const gradientRevenue = ctxCash.createLinearGradient(0, 0, 0, 200);
