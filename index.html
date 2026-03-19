@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -1129,7 +1129,7 @@
               </div>
               <div id="vendas-pagination" style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;gap:0.75rem;flex-wrap:wrap">
                 <div id="vendas-page-info" style="color:var(--muted);font-size:0.85rem">
-                  Mostrando 0 – 0 de 0 registros
+                  Mostrando 0 â€“ 0 de 0 registros
                 </div>
                 <div style="display:flex;align-items:center;gap:0.5rem">
                   <label style="font-size:0.85rem;color:var(--muted)">Por p&#225;gina</label>
@@ -2116,6 +2116,9 @@
       if (cacheEntry.pages[pageIndex]) {
         allTransactions = cacheEntry.pages[pageIndex];
         populateParametroFilter(allTransactions);
+        registerAccountsFromTransactions(allTransactions);
+        renderAccountOptions();
+        renderAccountGroupFilter();
         return;
       }
       if (transactionState.loading) return;
@@ -3425,7 +3428,7 @@
       const pageData = baseData.slice(start, end);
       updateMissingParametroIndicator(baseData);
       const sorted = pageData.slice();
-      const sortedCategories = categories.slice().sort((a, b) => a.localeCompare(b));
+      const sortedCategories = [...new Set([...categories, ...dashboardCategories.map((cat) => cat.name).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
       const categorySet = new Set(sortedCategories);
       const baseOptionsHtml = sortedCategories
         .map((category) => `<option value="${escapeAttribute(category)}">${escapeHtml(category)}</option>`)
@@ -3648,6 +3651,7 @@
 
       vendasCurrentPage = 1;
       renderVendasTable();
+      return vendasFiltered;
     }
 
     function renderVendasTable() {
@@ -3680,7 +3684,7 @@
       const info = qs("#vendas-page-info");
       if (info) {
         const startLabel = total === 0 ? 0 : startIndex + 1;
-        info.textContent = `Mostrando ${startLabel} – ${endIndex} de ${total} registros`;
+        info.textContent = `Mostrando ${startLabel} â€“ ${endIndex} de ${total} registros`;
       }
 
       const prevButton = qs("#vendas-prev-page");
@@ -3986,6 +3990,8 @@
         filteredTransactions = [];
       }
       applyTransactionFilters();
+      renderAccountOptions();
+      renderAccountGroupFilter();
       updateDashboard();
       ensureAggregateForFilters(filters);
     }
@@ -5554,83 +5560,29 @@
       if (!sheets.length) return [];
       const sheet = workbook.Sheets[sheets[0]];
       if (!sheet) return [];
-        const data = XLSX.utils.sheet_to_json(sheet, {
-          raw: true,
-          defval: ""
-        });
-        return data;
+      return XLSX.utils.sheet_to_json(sheet, {
+        header: 1,
+        raw: true,
+        defval: ""
+      });
     }
 
     async function importarNotasFiscaisPlanilha(sheetData) {
       if (!sheetData || !sheetData.length) {
-        showToast("Arquivo vazio ou inv\u00e1lido.", "error");
+        showToast("Arquivo vazio ou inválido.", "error");
         return false;
       }
-      const headers = Object.keys(sheetData[0]);
-      const normalizedHeaders = headers.map((header) => normalizeHeader(header));
-      const isLikelyName = (value) => {
-        const text = value?.toString().trim();
-        if (!text) return false;
-        if (/^\d+$/.test(text)) return false;
-        return /[A-Za-z\u00C0-\u00FF]/.test(text);
-      };
-      const pickColumn = (candidates) => {
-        for (const candidate of candidates) {
-          const index = normalizedHeaders.findIndex((header) => header.includes(candidate));
-          if (index < 0) continue;
-          const header = headers[index];
-          if (sheetData.some((row) => isLikelyName(row[header]))) return header;
-        }
-        return "";
-      };
-      const pickColumnByIndex = (index) => {
-        if (index < 0 || index >= headers.length) return "";
-        const header = headers[index];
-        if (!header) return "";
-        return sheetData.some((row) => isLikelyName(row[header])) ? header : "";
-      };
-      const pacienteCol = pickColumn([
-        "razao social do tomador",
-        "nome do tomador",
-        "razao social tomador",
-        "razao social",
-        "nome do cliente",
-        "cliente",
-        "paciente"
-      ]) || pickColumnByIndex(29)
-        || pickColumn(["tomador"]);
-      const valorCol = findColumn(headers, [
-        "valor servicos",
-        "valor dos servicos",
-        "valor",
-        "total"
-      ]);
-      const numeroCol = findColumn(headers, [
-        "nº da nota fiscal eletronica",
-        "numero da nota fiscal eletronica",
-        "numero da nota fiscal",
-        "numero da nota",
-        "nf",
-        "nota fiscal"
-      ]);
-      const dataCol = findColumn(headers, [
-        "data hora da emissao da nota fiscal",
-        "data de emissao",
-        "emissao",
-        "data"
-      ]) || headers[4] || "";
-      if (!pacienteCol || !valorCol || !dataCol) {
-        showToast("Modelo de NF-e n\u00e3o reconhecido.", "error");
-        return false;
-      }
+      const COL_NUMERO = 0;
+      const COL_DATA = 4;
+      const COL_PACIENTE = 12;
+      const COL_VALOR = 39;
       const vendasValidas = [];
       sheetData.forEach((row) => {
-        const paciente = row[pacienteCol];
-        const valorNF = parseNotaFiscalValor(row[valorCol]);
-        const data = resolveDataNotaFiscal(row, headers);
-        const numero = numeroCol && row[numeroCol]
-          ? row[numeroCol].toString().trim()
-          : "";
+        if (!Array.isArray(row) || !row.length) return;
+        const data = parseNFDateSafe(row[COL_DATA]);
+        const numero = (row[COL_NUMERO] ?? "").toString().trim();
+        const paciente = (row[COL_PACIENTE] ?? "").toString().trim();
+        const valorNF = parseNotaFiscalValor(row[COL_VALOR]);
         if (!data || !paciente || valorNF <= 0) return;
         vendasValidas.push({
           id: crypto.randomUUID(),
@@ -5638,12 +5590,12 @@
           tipo: "Nota Fiscal",
           data,
           numero,
-          paciente: paciente.toString().trim(),
+          paciente,
           valor: valorNF
         });
       });
       if (!vendasValidas.length) {
-        showToast("Nenhuma venda v\u00e1lida encontrada no arquivo.", "error");
+        showToast("Nenhuma venda válida encontrada no arquivo.", "error");
         return false;
       }
       return await ingestImportedVendas(vendasValidas);
@@ -5699,10 +5651,10 @@
             "n documento",
             "n doc",
             "no doc",
-            "nº doc",
+            "nÂº doc",
             "num doc",
             "num documento",
-            "nº rec",
+            "nÂº rec",
             "n rec",
             "numero rec",
             "numero do rec",
@@ -5735,9 +5687,9 @@
       const data = parseBrazilianDate(row[columnMap.data]);
       const valor = parseExtratoAmount(row[columnMap.valor]);
       if (!data || !Number.isFinite(valor) || valor <= 0) return null;
-      const numeroRaw = columnMap.numero >= 0 ? row[columnMap.numero] : "";
+      const numeroRaw = columnMap.numero >= 0 ? row[columnMap.numero] : (tipo === "Recibo" ? row[0] : "");
       const pacienteRaw = columnMap.paciente >= 0 ? row[columnMap.paciente] : "";
-      const numero = (numeroRaw ?? "").toString().trim() || (tipo === "Recibo" ? "-" : "");
+      const numero = (numeroRaw ?? "").toString().trim() || (tipo === "Recibo" ? ((row?.[0] ?? "").toString().trim() || "-") : "");
       const paciente = (pacienteRaw ?? "").toString().trim() || (tipo === "Recibo" ? "Não identificado" : "");
       if (tipo !== "Recibo" && (!numero || !paciente)) return null;
       return {
@@ -5886,46 +5838,171 @@
       if (!sheet) return [];
       const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", header: 1 });
       if (!rawRows.length) return [];
-      const headers = rawRows[0].map((header) => (header ?? "").toString());
-      const rows = rawRows.slice(1).map((row) => {
+      const headerInfo = findExtratoHeaderRow(rawRows);
+      if (!headerInfo) return [];
+      const rows = rawRows.slice(headerInfo.index + 1).map((row) => {
         const mapped = {};
-        headers.forEach((header, index) => {
+        headerInfo.headers.forEach((header, index) => {
           if (!header) return;
           mapped[header] = row[index] ?? "";
         });
-        mapped.__colV = row[21];
+        mapped.__cells = row;
+        mapped.__colY = row[24];
         mapped.__colA = row[0];
         return mapped;
       });
       return rows.map((row) => mapExtratoRow(row)).filter(Boolean);
     }
 
+    function findExtratoHeaderRow(rows) {
+      let best = null;
+      rows.forEach((row, index) => {
+        if (!Array.isArray(row) || !row.length) return;
+        const headers = row.map((cell) => (cell ?? "").toString().trim());
+        const normalized = headers.map((header) => normalizeText(header));
+        const hasDate = normalized.some((h) => h === "data"
+          || h.includes("data movimento")
+          || h.includes("data do movimento")
+          || h.includes("data lancamento")
+          || h.includes("movimento"));
+        const hasDescription = normalized.some((h) => /(descricao|historico|complemento|favorecido|documento|lancamento|detalhe)/.test(h));
+        const hasType = normalized.some((h) => /(tipo|operacao|natureza|entrada|saida)/.test(h));
+        const hasAmount = normalized.some((h) => /(valor|credito|debito|entrada|saida)/.test(h));
+        const hasSupport = normalized.some((h) => /(categoria|conta|saldo|pgto|pagamento|recbto|recebimento)/.test(h));
+        const score = [hasDate, hasDescription, hasType || hasAmount, hasSupport].filter(Boolean).length;
+        if (!hasDate || !hasAmount) return;
+        if (!best || score > best.score) {
+          best = { index, headers, score };
+        }
+      });
+      return best ? { index: best.index, headers: best.headers } : null;
+    }
+
+    function getExtratoField(normalizedRow, candidates) {
+      for (const key of candidates) {
+        if (!(key in normalizedRow)) continue;
+        const value = normalizedRow[key];
+        if (value === undefined || value === null || value === "") continue;
+        return value;
+      }
+      return "";
+    }
+
+    function resolveExtratoAmount(normalizedRow) {
+      const directValue = parseExtratoAmount(getExtratoField(normalizedRow, [
+        "valor (r$)",
+        "valor r$",
+        "valor",
+        "valor liquido",
+        "valor total",
+        "valor do movimento"
+      ]));
+      if (Number.isFinite(directValue) && directValue !== 0) return directValue;
+      const creditValue = parseExtratoAmount(getExtratoField(normalizedRow, [
+        "credito",
+        "valor credito",
+        "creditos",
+        "entrada",
+        "valor de entrada"
+      ]));
+      const debitValue = parseExtratoAmount(getExtratoField(normalizedRow, [
+        "debito",
+        "valor debito",
+        "debitos",
+        "saida",
+        "valor de saida"
+      ]));
+      if (Number.isFinite(creditValue) && !Number.isFinite(debitValue)) return creditValue;
+      if (!Number.isFinite(creditValue) && Number.isFinite(debitValue)) return -Math.abs(debitValue);
+      if (Number.isFinite(creditValue) && Number.isFinite(debitValue)) {
+        const net = creditValue - Math.abs(debitValue);
+        if (net !== 0) return net;
+      }
+      return NaN;
+    }
+
+    function inferExtratoTypeFromRow(normalizedRow, amount) {
+      const explicitType = getExtratoField(normalizedRow, [
+        "tipo da operacao",
+        "tipo de operacao",
+        "tipo operacao",
+        "tipo",
+        "operacao",
+        "natureza"
+      ]);
+      const mappedType = mapExtratoType(explicitType);
+      if (mappedType) return mappedType;
+      const creditValue = parseExtratoAmount(getExtratoField(normalizedRow, ["credito", "valor credito", "creditos", "entrada"]));
+      if (Number.isFinite(creditValue) && creditValue > 0) return "receita";
+      const debitValue = parseExtratoAmount(getExtratoField(normalizedRow, ["debito", "valor debito", "debitos", "saida"]));
+      if (Number.isFinite(debitValue) && debitValue > 0) return "despesa";
+      if (Number.isFinite(amount) && amount < 0) return "despesa";
+      if (Number.isFinite(amount) && amount > 0) return "receita";
+      const text = normalizeText([
+        getExtratoField(normalizedRow, ["descricao", "historico", "descricao do movimento", "complemento"]),
+        getExtratoField(normalizedRow, ["categoria", "categoria contabilidade", "categoria contabil", "categoria da contabilidade"])
+      ].filter(Boolean).join(" "));
+      if (/(debito|pagamento|saida|tarifa|transferencia enviada)/.test(text)) return "despesa";
+      if (/(credito|recebimento|entrada|pix recebido|transferencia recebida)/.test(text)) return "receita";
+      return null;
+    }
+
+    function findExtratoDate(row, normalizedRow) {
+      const directDate = getExtratoField(normalizedRow, [
+        "data movimento",
+        "data do movimento",
+        "data lancamento",
+        "data da movimentacao",
+        "data",
+        "movimento"
+      ]) || row.__colA;
+      const parsedDirectDate = parseBrazilianDate(directDate);
+      if (parsedDirectDate) return parsedDirectDate;
+      const cells = Array.isArray(row.__cells) ? row.__cells : [];
+      for (const cell of cells.slice(0, 6)) {
+        const parsed = parseBrazilianDate(cell);
+        if (parsed) return parsed;
+      }
+      return "";
+    }
+
     function mapExtratoRow(row) {
       const normalizedRow = {};
       Object.entries(row).forEach(([key, value]) => {
-        if (key === "__colV") return;
+        if (key.startsWith("__")) return;
         const normalizedKey = normalizeText(key);
         if (!normalizedKey) return;
         normalizedRow[normalizedKey] = value ?? "";
       });
-      const columnVValue = row.__colV ?? row.V ?? row.v;
-      const rawDate = row.__colA ?? normalizedRow["data movimento"];
-      const rawType = normalizedRow["tipo da operacao"];
-      const rawValue = normalizedRow["valor (r$)"];
-      if (!rawDate || !rawType || rawValue === undefined || rawValue === null) return null;
-      const date = parseBrazilianDate(rawDate);
-      const type = mapExtratoType(rawType);
-      const amount = parseExtratoAmount(rawValue);
-      if (!date || !type || !Number.isFinite(amount)) return null;
-      const description = (normalizedRow["descricao"] || normalizedRow["historico"] || normalizedRow["descricao do movimento"] || "Movimenta\u00e7\u00e3o").toString().trim();
-      const rawCategory = normalizedRow["categoria"]
-        || normalizedRow["categoria contabilidade"]
-        || normalizedRow["categoria contabil"]
-        || normalizedRow["categoria da contabilidade"]
-        || columnVValue;
+      const date = findExtratoDate(row, normalizedRow);
+      const amount = resolveExtratoAmount(normalizedRow);
+      const type = inferExtratoTypeFromRow(normalizedRow, amount);
+      if (!date || !type || !Number.isFinite(amount) || amount === 0) return null;
+      const description = (
+        getExtratoField(normalizedRow, [
+          "descricao",
+          "historico",
+          "descricao do movimento",
+          "complemento",
+          "favorecido",
+          "detalhe",
+          "documento"
+        ]) || "Movimentação"
+      ).toString().trim();
+      const rawCategory = getExtratoField(normalizedRow, [
+        "categoria",
+        "categoria contabilidade",
+        "categoria contabil",
+        "categoria da contabilidade"
+      ]) || row.__colY;
       const resolvedCategory = (rawCategory ?? "").toString().trim() || description;
-      const account = normalizedRow["conta bancaria"] || normalizedRow["conta"];
-      const payment = normalizedRow["forma de pgto/recbto"] || normalizedRow["forma de pagamento"];
+      const account = getExtratoField(normalizedRow, ["conta bancaria", "conta bancária", "conta", "banco"]);
+      const payment = getExtratoField(normalizedRow, [
+        "forma de pgto/recbto",
+        "forma de pgto recbto",
+        "forma de pagamento",
+        "meio de pagamento"
+      ]);
       return {
         date,
         type,
@@ -6281,6 +6358,12 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
 
 
 
