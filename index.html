@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=ErIuW-Tx38LL6et5dCR20mCiurEE2wY0m97sWQKYxbQDIejVDABII2gQWo6mOGajNQYnOPX4W0HwCgFSwxp7Hr6rGqL4kc2na_2jjmqep_hT4OrfgnX86KckZOUZx1EEBfgsObDd8CilIXEO3rbgo1ScBdpDN0exnYwVdnHPCVk4lfMRAGjr6bQBMQOTH8s1RyfwA9us2vINP1jKRrmykS2Nxnya2TUMqs3BlWwzald_jfzOz-l8ofQdyAEjx9H5VybPkiA0DRfuWxWauwZ6YA" charset="UTF-8"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
 :root {
@@ -536,6 +536,10 @@
     }
     .highlight-row.four {
       grid-template-columns: repeat(4, 1fr);
+    }
+    .highlight-row.two {
+      grid-template-columns: repeat(2, 1fr);
+      max-width: 780px;
     }
     .highlight-row .highlight-card {
       width: 100%;
@@ -1524,6 +1528,7 @@
       "Despesas Diversas",
       "Impostos",
       "Investimento",
+      "Transferencia Livro Caixa",
       "Custo com Marketing",
       "Custo de Equipe",
       "Custo de Insumos",
@@ -1592,6 +1597,7 @@
       { id: "despesasDiversas", label: "Despesas Diversas", color: "var(--danger)", calc: (agg) => getAggregateParametroTotal(agg, "Despesas Diversas") },
       { id: "impostos", label: "Impostos", color: "var(--danger)", calc: (agg) => getAggregateParametroTotal(agg, "Impostos") },
       { id: "investimentos", label: "Investimento", color: "var(--danger)", calc: (agg) => getAggregateParametroTotal(agg, "Investimento") },
+      { id: "transferenciaLivroCaixa", label: "TRANSFERENCIA P/ LIVRO CAIXA", color: "var(--danger)", calc: (agg) => getAggregateParametroTotal(agg, "Transferencia Livro Caixa") },
       { id: "insumos", label: "Custo de Insumos", color: "var(--danger)", calc: (agg) => getAggregateParametroTotal(agg, "Custo de Insumos") },
       { id: "marketing", label: "Custo com Marketing", color: "var(--danger)", calc: (agg) => getAggregateParametroTotal(agg, "Custo com Marketing") },
       { id: "equipe", label: "Custo de Equipe", color: "var(--danger)", calc: (agg) => getAggregateParametroTotal(agg, "Custo de Equipe") },
@@ -3188,6 +3194,7 @@
           "despesasDiversas",
           "impostos",
           "investimentos",
+          "transferenciaLivroCaixa",
           "retiradas",
           "equipe",
           "insumos",
@@ -3214,7 +3221,8 @@
         ];
         const rowsDespesas = [
           { className: "four", items: ["despesaFixa", "despesasDiversas", "impostos", "investimentos"].map(getHighlight).filter(Boolean) },
-          { className: "four", items: ["marketing", "equipe", "insumos", "retiradas"].map(getHighlight).filter(Boolean) }
+          { className: "four", items: ["marketing", "equipe", "insumos"].map(getHighlight).filter(Boolean) },
+          { className: "two", items: ["retiradas", "transferenciaLivroCaixa"].map(getHighlight).filter(Boolean) }
         ];
         const receitaItems = rowsReceitas.flatMap((row) => row.items);
         const despesaItems = rowsDespesas.flatMap((row) => row.items);
@@ -3229,12 +3237,13 @@
                   ? receitaPercentMap[item.id]
                   : (expenseIds.has(item.id) ? despesaPercentMap[item.id] : 0);
                 const percentLabel = Number.isFinite(percent) ? `${percent.toFixed(1)}%` : "0.0%";
+                const showPercent = item.id !== "transferenciaLivroCaixa";
                 return `
               <div class="card highlight-card">
                 <div class="card-title">${item.label}</div>
                 <div class="card-value" style="color:${item.color ?? "var(--text)"}">
                   ${formatCurrency(value)}
-                  <span style="font-size:0.85rem;color:var(--muted);font-weight:500">(${percentLabel})</span>
+                  ${showPercent ? `<span style="font-size:0.85rem;color:var(--muted);font-weight:500">(${percentLabel})</span>` : ""}
                 </div>
               </div>
                 `;
@@ -6358,7 +6367,6 @@
   </script>
 </body>
 </html>
-
 
 
 
